@@ -1,62 +1,72 @@
-# ✈️ paperfly.site - P2P Direct Paper Plane File & Text Transfer
+# paperfly.site - Fold. Fly. Share.
 
-> **Metaphor:** Bàn làm việc học sinh bằng giấy. Mỗi file/ảnh hay đoạn ghi chú là một tờ giấy vật lý được gấp thành máy bay và phi trực tiếp sang thiết bị đối diện qua WebRTC (Không lưu đám mây / Zero-Cloud).
+> Fold your files and notes into digital paper airplanes and fly them across the web to anyone, anywhere. Direct, private, and zero permanent cloud footprint.
 
-![Paperfly Logo](/public/logo.png)
+![Paperfly Banner](/public/og-image.png)
 
-## 🎨 Hệ Thống Design Tokens & Visual Style
-
-- **Indigo Pencil (`#3F4468`):** Nét vẽ chì/bút dạ than, màu chữ và viền logo.
-- **Ice Blue Paper (`#E8F1F8`):** Màu mảng cánh máy bay, thẻ bưu kiện thư.
-- **Yellow Sticky Note (`#FFF3B2`):** Màu giấy ghi chú truyền thống cho văn bản/link.
-- **Kraft Paper (`#F5EBE0`):** Giấy xi măng cổ điển bọc gói bưu phẩm/tập tin.
-- **Background Grid (`#FAFAFA`):** Nền giấy kẻ ô ly học sinh.
-- **Stamp Red (`#EB5757`):** Màu con dấu niêm phong sáp đỏ cho nút hành động.
-
-## 🚀 Tính Năng Nổi Bật
-
-- **Không dùng emoji ở giao diện:** Sử dụng toàn bộ biểu tượng vector sắc nét từ Lucide và typography vẽ tay mộc mạc.
-- **Song ngữ hoàn chỉnh:** Tiếng Việt và Tiếng Anh với ngôn từ thân thiện cho người dùng phổ thông.
-- **Con dấu QR 16x16:** Nằm ngay trên tem thư, quét được tức thì từ camera điện thoại.
-- **Âm thanh ASMR giấy thủ công:** Tổng hợp trực tiếp qua Web Audio API (sột soạt, gió lướt, cộp con dấu).
-- **Sẵn sàng Production:** Tích hợp máy chủ Node.js phục vụ file tĩnh và PeerServer WebRTC.
+🔗 **Live App:** [https://paperflysite.vercel.app/](https://paperflysite.vercel.app/)
 
 ---
 
-## 🛠️ Hướng Dẫn Vận Hành & Triển Khai (Deployment)
+## Key Highlights
 
-### 1. Chạy Máy Chủ Sản Phẩm (Production Server)
+- **Universal Delivery (No AirDrop Limits):** Send to anyone across the country or worldwide. Works seamlessly over 4G/5G mobile networks, different Wi-Fi networks, and even if you close the tab or switch apps.
+- **Instant Code & QR Pickup:** Compose a note or drop a file, tap "Fold & Fly", and get a 4-6 character pickup code plus a 16x16 QR stamp. The recipient opens the web, enters the code or scans the QR, and the letter unfolds immediately.
+- **In-Browser Media Preview:** Built-in viewer for images (PNG, JPG, WEBP, GIF, SVG), video player for MP4/WEBM, and audio player for MP3/WAV/M4A before and after downloading.
+- **Procedural Paper ASMR:** Authentic paper rustling, wind swooshes, and wax seal thuds synthesized in real-time via the Web Audio API with zero external audio assets.
+- **Skeuomorphic Stationery Design:** School graph paper canvas, yellow sticky notes with highlighter markers, vintage kraft parcels, and wax seal action buttons.
+- **Bilingual Support (EN / VI):** Toggle between English and Vietnamese with warm, friendly, non-technical language.
+- **Zero-Cloud Retention:** Data transfers directly and temporary packages automatically self-destruct after delivery.
+
+---
+
+## Color Palette & Design Tokens
+
+- **Indigo Pencil (`#3F4468`):** Sketch line art, text, and original paper plane contours.
+- **Ice Blue Paper (`#E8F1F8`):** Aerodynamic wing highlights and parcel tags.
+- **Yellow Sticky Note (`#FFF3B2`):** Traditional sticky memo paper for text and links.
+- **Kraft Paper (`#F5EBE0`):** Vintage parcel texture for files and attachments.
+- **Graph Paper Grid (`#FAFAFA`):** Classroom exercise book background grid.
+- **Stamp Red (`#EB5757`):** Postal wax seal accent for primary actions.
+
+---
+
+## Quick Start & Local Development
+
+### 1. Run Development Server
 
 ```bash
-# Cài đặt thư viện
+# Install dependencies
 npm install
 
-# Biên dịch gói sản phẩm tối ưu (dist/)
-npm run build
-
-# Khởi chạy máy chủ Production (Cổng mặc định: 3000)
-npm start
+# Start Vite dev server
+npm run dev
 ```
-*Máy chủ Node.js sẽ phục vụ toàn bộ tệp tĩnh và tích hợp sẵn WebRTC PeerServer tại `/peerjs`.*
 
----
-
-### 2. Triển khai bằng Docker
+### 2. Build & Production Run
 
 ```bash
-# Đóng gói Docker Image
+# Type-check and build production bundle (dist/)
+npm run build
+
+# Start the standalone Node.js production server
+npm start
+```
+
+### 3. Deploy via Docker
+
+```bash
+# Build Docker image
 docker build -t paperfly.site .
 
-# Chạy Container trên cổng 3000
+# Run container on port 3000
 docker run -d -p 3000:3000 --name paperfly paperfly.site
 ```
 
----
+### 4. Deploy to Vercel / Netlify
 
-### 3. Triển khai lên Vercel / Netlify / Cloudflare Pages
-
-Dự án đã được cấu hình sẵn các tệp chuyển hướng:
-- [`vercel.json`](file:///c:/Users/zippo/Documents/project/paperfly.site/vercel.json) cho Vercel.
-- [`public/_redirects`](file:///c:/Users/zippo/Documents/project/paperfly.site/public/_redirects) cho Netlify / Cloudflare Pages.
-
-Chỉ cần kết nối repository vào Vercel hoặc Netlify, hệ thống sẽ tự động chạy lệnh `npm run build` và đưa trang web lên hoạt động ngay lập tức!
+This project is pre-configured with [`vercel.json`](vercel.json) and [`public/_redirects`](public/_redirects):
+1. Import repository into [Vercel](https://vercel.com) or [Netlify](https://netlify.com).
+2. Framework Preset: **Vite**.
+3. Build Command: `npm run build`, Output Directory: `dist`.
+4. Deploy!
