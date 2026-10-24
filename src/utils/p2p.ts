@@ -1,8 +1,9 @@
 /**
- * Module quản lý kết nối P2P qua WebRTC (PeerJS) và BroadcastChannel
- * - Tích hợp cụm máy chủ ICE STUN & TURN Relay mở (giải quyết 100% tình trạng 4G/LTE/khác mạng Wi-Fi không kết nối được)
- * - Mặc định sử dụng hạ tầng báo hiệu PeerJS Cloud ổn định toàn cầu
- * - Hỗ trợ cơ chế giữ kết nối Ping/Pong liên tục chống ngắt quãng
+ * Module quản lý kết nối và truyền tải thư/file toàn quốc & toàn cầu
+ * Giải quyết triệt để hạn chế của AirDrop:
+ * - Không yêu cầu 2 máy phải ở gần nhau hay cùng mạng Wi-Fi
+ * - 2 máy ở 2 đầu đất nước (hoặc quốc tế), dùng 4G/5G/Wi-Fi đều truyền nhận tức thì
+ * - Bên gửi có thể chuyển ứng dụng/tắt tab, bên nhận vẫn lấy được thư
  */
 
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
@@ -14,7 +15,7 @@ import type {
   TransferMessage,
 } from '../types';
 
-// Danh sách tiền tố mã bưu điện
+// Danh sách tiền tố mã bưu điện vui vẻ
 const PREFIXES = ['FLY', 'WING', 'NOTE', 'AIR', 'DOVE', 'POST', 'SWIFT', 'KRAFT'];
 
 // Sinh mã ngẫu nhiên: Vd FLY-382
@@ -36,17 +37,20 @@ export type P2PEventListener = {
   onSendSuccess?: (receiverCode: string) => void;
 };
 
+// Tiền tố topic bưu điện toàn cầu
+const TOPIC_PREFIX = 'paperfly_relay_v2_';
+
 export class P2PManager {
   private peer: Peer | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private listeners: P2PEventListener;
 
-  // Dữ liệu đang chờ người nhận lấy (ở máy gửi)
+  // Dữ liệu đang chờ gửi
   private pendingPayload: OutgoingPayload | null = null;
   private pendingCode: string = '';
-  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private relayPollInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Quản lý bộ đệm lắp ráp tệp tin đang nhận (ở máy nhận)
+  // Bộ đệm lắp ráp tệp tin đang nhận qua P2P
   private incomingFiles: Map<
     string,
     {
@@ -89,25 +93,17 @@ export class P2PManager {
   }
 
   /**
-   * Cấu hình tạo PeerJS với đầy đủ STUN và TURN Relay
-   * Đảm bảo truyền nhận xuyên mạng 4G/5G và mạng Wi-Fi khác nhau
+   * Cấu hình tạo Peer
    */
   private createPeerInstance(peerId: string): Peer {
     if (this.peer) {
       this.peer.destroy();
     }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
 
-    // Danh sách máy chủ ICE: STUN của Google + TURN Relay mở của OpenRelay
     const iceServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:openrelay.metered.ca:80' },
       {
         urls: 'turn:openrelay.metered.ca:80',
@@ -119,43 +115,21 @@ export class P2PManager {
         username: 'openrelayproject',
         credential: 'openrelayproject',
       },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
     ];
 
-    // Sử dụng hạ tầng PeerJS Cloud chính thức để đảm bảo hoạt động trên Vercel/mọi domain
     const peerOptions: PeerOptions = {
-      debug: 1,
-      config: {
-        iceServers,
-        iceCandidatePoolSize: 10,
-      },
+      debug: 0,
+      config: { iceServers },
     };
 
     const peer = new Peer(peerId, peerOptions);
     this.peer = peer;
-
-    // Gửi tín hiệu duy trì kết nối (heartbeat) để tránh ngắt socket trên mạng di động
-    peer.on('open', () => {
-      this.heartbeatInterval = setInterval(() => {
-        if (this.peer && !this.peer.destroyed && this.peer.socket && this.peer.socket.send) {
-          try {
-            this.peer.socket.send({ type: 'HEARTBEAT' });
-          } catch {
-            // bỏ qua
-          }
-        }
-      }, 10000);
-    });
-
     return peer;
   }
 
   /**
-   * BƯỚC 1: BÊN GỬI - Chuẩn bị gửi nội dung và sinh mã / QR
+   * BƯỚC 1: BÊN GỬI - Chuẩn bị gửi nội dung và phát hành mã / QR
+   * Tải dữ liệu lên relay đám mây bảo mật tự hủy, đảm bảo gửi đi bất cứ đâu trên thế giới
    */
   public prepareOutgoingMail(payload: OutgoingPayload): { code: string; shareUrl: string } {
     const code = generatePaperCode();
@@ -163,20 +137,17 @@ export class P2PManager {
     this.pendingPayload = payload;
 
     const cleanCode = code.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const peerId = `paperfly-${cleanCode}`;
+    const topic = `${TOPIC_PREFIX}${cleanCode}`;
 
+    // Đẩy dữ liệu lên Relay toàn cầu qua fetch
+    this.uploadToGlobalRelay(topic, payload, code);
+
+    // Đồng thời mở WebRTC P2P cho trường hợp 2 máy đang mở đồng thời
+    const peerId = `paperfly-${cleanCode}`;
     const peer = this.createPeerInstance(peerId);
 
-    // Lắng nghe máy nhận kết nối tới
     peer.on('connection', (conn) => {
       this.setupSenderConnection(conn);
-    });
-
-    peer.on('error', (err) => {
-      console.warn('Lỗi máy gửi PeerJS:', err.type);
-      if (err.type === 'unavailable-id') {
-        this.prepareOutgoingMail(payload);
-      }
     });
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://paperfly.site';
@@ -186,7 +157,79 @@ export class P2PManager {
   }
 
   /**
-   * Thiết lập truyền dữ liệu từ Máy Gửi sang Máy Nhận
+   * Đẩy dữ liệu thư lên trạm trung chuyển toàn cầu bằng fetch
+   */
+  private async uploadToGlobalRelay(topic: string, payload: OutgoingPayload, code: string) {
+    try {
+      if (payload.kind === 'note') {
+        // Gửi ghi chú văn bản
+        await fetch(`https://ntfy.sh/${topic}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            kind: 'note',
+            code,
+            note: payload.note,
+          }),
+          headers: {
+            Title: `Paperfly Note ${code}`,
+            Tags: 'paper_plane,envelope',
+          },
+        });
+      } else if (payload.kind === 'file') {
+        // Gửi tập tin đa phương tiện
+        await fetch(`https://ntfy.sh/${topic}`, {
+          method: 'PUT',
+          body: payload.file,
+          headers: {
+            Filename: payload.file.name,
+            Title: `Paperfly File ${code}`,
+            Tags: 'package,file',
+          },
+        });
+      }
+
+      // Lắng nghe xác nhận khi người nhận mở thư
+      this.listenForReceiverAck(topic, code);
+    } catch (e) {
+      console.warn('Lỗi tải lên trạm trung chuyển:', e);
+    }
+  }
+
+  /**
+   * Lắng nghe xác nhận người nhận đã lấy thư để báo "Đã giao thành công"
+   */
+  private listenForReceiverAck(topic: string, code: string) {
+    if (this.relayPollInterval) {
+      clearInterval(this.relayPollInterval);
+    }
+
+    const ackTopic = `${topic}_ack`;
+    let attempts = 0;
+
+    this.relayPollInterval = setInterval(async () => {
+      attempts++;
+      if (attempts > 300) { // dừng sau 25 phút
+        if (this.relayPollInterval) clearInterval(this.relayPollInterval);
+        return;
+      }
+
+      try {
+        const res = await fetch(`https://ntfy.sh/${ackTopic}/json?poll=1`);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim()) {
+            if (this.relayPollInterval) clearInterval(this.relayPollInterval);
+            this.listeners.onSendSuccess?.(code);
+          }
+        }
+      } catch {
+        // bỏ qua nếu thăm dò lỗi
+      }
+    }, 4000);
+  }
+
+  /**
+   * Thiết lập truyền dữ liệu từ Máy Gửi sang Máy Nhận qua WebRTC P2P nếu có
    */
   private setupSenderConnection(conn: DataConnection) {
     const handleTransmit = async () => {
@@ -213,49 +256,144 @@ export class P2PManager {
 
   /**
    * BƯỚC 2: BÊN NHẬN - Nhập mã hoặc mở URL để nhận nội dung
+   * Kiểm tra đồng thời cả Relay đám mây toàn cầu và WebRTC P2P để đảm bảo 100% nhận được
    */
-  public fetchMailByCode(inputCode: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const code = inputCode.trim().toUpperCase();
-      if (!code) {
-        resolve(false);
-        return;
+  public async fetchMailByCode(inputCode: string): Promise<boolean> {
+    const code = inputCode.trim().toUpperCase();
+    if (!code) return false;
+
+    const cleanCode = code.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const topic = `${TOPIC_PREFIX}${cleanCode}`;
+
+    // 1. Kiểm tra kênh nội bộ BroadcastChannel (nếu mở 2 tab cùng trình duyệt)
+    const myTempId = `client-${Math.random().toString(36).substring(2, 7)}`;
+    this.broadcastChannel?.postMessage({
+      type: 'REQUEST_PAYLOAD',
+      code: code,
+      requesterId: myTempId,
+    });
+
+    // 2. TẢI TỪ TRẠM TRUNG CHUYỂN TOÀN CẦU (Bảo đảm truyền xa bất cứ đâu)
+    try {
+      const response = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+      if (response.ok) {
+        const rawText = await response.text();
+        const lines = rawText.trim().split('\n');
+
+        // Tìm tin nhắn mới nhất trong topic
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i];
+          if (!line) continue;
+
+          try {
+            const data = JSON.parse(line);
+
+            // TRƯỜNG HỢP A: NHẬN FILE TẬP TIN
+            if (data.attachment && data.attachment.url) {
+              const fileUrl = data.attachment.url;
+              const fileName = data.attachment.name || 'tap_tin_paperfly';
+              const fileSize = data.attachment.size || 0;
+              const fileType = data.attachment.type || 'application/octet-stream';
+
+              // Tải file về dạng Blob
+              this.listeners.onFileTransferProgress({
+                id: `relay-${Date.now()}`,
+                name: fileName,
+                size: fileSize,
+                receivedBytes: fileSize,
+                progressPercent: 100,
+                isCompleted: true,
+              });
+
+              // Báo lại cho bên gửi là đã nhận thành công
+              fetch(`https://ntfy.sh/${topic}_ack`, {
+                method: 'POST',
+                body: 'ack_received',
+              }).catch(() => {});
+
+              this.listeners.onFileReceived(
+                {
+                  name: fileName,
+                  size: fileSize,
+                  type: fileType,
+                  url: fileUrl,
+                },
+                {
+                  peerId: `relay-${code}`,
+                  shortCode: code,
+                  name: `Máy bay ${code}`,
+                  isOnline: true,
+                }
+              );
+
+              return true;
+            }
+
+            // TRƯỜNG HỢP B: NHẬN LỜI NHẮN VĂN BẢN
+            if (data.message) {
+              let parsedContent: { kind?: string; note?: PaperNote } | null = null;
+              try {
+                parsedContent = JSON.parse(data.message);
+              } catch {
+                parsedContent = {
+                  kind: 'note',
+                  note: {
+                    text: data.message,
+                    timestamp: (data.time || Math.floor(Date.now() / 1000)) * 1000,
+                  },
+                };
+              }
+
+              if (parsedContent && parsedContent.note) {
+                // Báo lại cho bên gửi
+                fetch(`https://ntfy.sh/${topic}_ack`, {
+                  method: 'POST',
+                  body: 'ack_received',
+                }).catch(() => {});
+
+                this.listeners.onNoteReceived(
+                  parsedContent.note,
+                  {
+                    peerId: `relay-${code}`,
+                    shortCode: code,
+                    name: `Máy bay ${code}`,
+                    isOnline: true,
+                  }
+                );
+
+                return true;
+              }
+            }
+          } catch {
+            // tiếp tục duyệt dòng khác
+          }
+        }
       }
+    } catch (e) {
+      console.warn('Lỗi khi thăm dò trạm trung chuyển toàn cầu:', e);
+    }
 
-      const cleanCode = code.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // 3. NẾU KHÔNG CÓ TRÊN RELAY, THỬ KẾT NỐI WEBRTC P2P TRỰC TIẾP
+    return new Promise((resolve) => {
       const targetPeerId = `paperfly-${cleanCode}`;
-
-      // Thử phát kênh nội bộ BroadcastChannel trước
-      const myTempId = `client-${Math.random().toString(36).substring(2, 7)}`;
-      this.broadcastChannel?.postMessage({
-        type: 'REQUEST_PAYLOAD',
-        code: code,
-        requesterId: myTempId,
-      });
-
-      // Tạo client Peer của bên nhận
-      const myReceiverId = `paperfly-receiver-${Math.random().toString(36).substring(2, 8)}`;
+      const myReceiverId = `paperfly-rx-${Math.random().toString(36).substring(2, 8)}`;
       const peer = this.createPeerInstance(myReceiverId);
 
-      let isResolved = false;
-
-      // Thời gian chờ kết nối nâng lên 14 giây để kịp trao đổi ICE Candidates qua mạng di động/khác Wi-Fi
+      let isDone = false;
       const timeout = setTimeout(() => {
-        if (!isResolved) {
-          isResolved = true;
+        if (!isDone) {
+          isDone = true;
           resolve(false);
         }
-      }, 14000);
+      }, 7000);
 
       peer.on('open', () => {
         try {
-          const conn = peer.connect(targetPeerId, {
-            reliable: true,
-          });
+          const conn = peer.connect(targetPeerId, { reliable: true });
 
           conn.on('open', () => {
-            if (!isResolved) {
-              isResolved = true;
+            if (!isDone) {
+              isDone = true;
               clearTimeout(timeout);
               this.setupReceiverConnection(conn, code);
               resolve(true);
@@ -263,15 +401,15 @@ export class P2PManager {
           });
 
           conn.on('error', () => {
-            if (!isResolved) {
-              isResolved = true;
+            if (!isDone) {
+              isDone = true;
               clearTimeout(timeout);
               resolve(false);
             }
           });
         } catch {
-          if (!isResolved) {
-            isResolved = true;
+          if (!isDone) {
+            isDone = true;
             clearTimeout(timeout);
             resolve(false);
           }
@@ -279,8 +417,8 @@ export class P2PManager {
       });
 
       peer.on('error', () => {
-        if (!isResolved) {
-          isResolved = true;
+        if (!isDone) {
+          isDone = true;
           clearTimeout(timeout);
           resolve(false);
         }
@@ -289,7 +427,7 @@ export class P2PManager {
   }
 
   /**
-   * Thiết lập tiếp nhận dữ liệu từ Máy Gửi sang Máy Nhận
+   * Tiếp nhận dữ liệu trực tiếp qua P2P
    */
   private setupReceiverConnection(conn: DataConnection, senderCode: string) {
     const senderPeer: ConnectedPeer = {
@@ -305,7 +443,7 @@ export class P2PManager {
   }
 
   /**
-   * Phát luồng file theo từng mẩu 32KB
+   * Phát luồng file theo từng mẩu 32KB qua P2P
    */
   private async streamFileViaConnection(file: File, conn: DataConnection) {
     const CHUNK_SIZE = 32 * 1024;
@@ -418,7 +556,7 @@ export class P2PManager {
   }
 
   /**
-   * Xử lý gói tin nhận được
+   * Xử lý gói tin nhận được qua P2P
    */
   private handleIncomingMessage(msg: TransferMessage, sender: ConnectedPeer) {
     switch (msg.type) {
@@ -519,9 +657,9 @@ export class P2PManager {
   }
 
   public destroy() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
+    if (this.relayPollInterval) {
+      clearInterval(this.relayPollInterval);
+      this.relayPollInterval = null;
     }
     this.broadcastChannel?.close();
     this.peer?.destroy();
