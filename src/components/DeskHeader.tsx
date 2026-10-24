@@ -51,18 +51,18 @@ export const DeskHeader: React.FC<DeskHeaderProps> = ({
     <header className="w-full max-w-4xl mx-auto pt-5 pb-3 px-4 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
       {/* Khối Logo & Tên dự án */}
       <div className="flex items-center gap-3">
-        <div className="relative group cursor-pointer" onClick={() => paperSound.playWhoosh()}>
+        <div className="cursor-pointer" onClick={() => paperSound.playWhoosh()}>
           <img
             src="/logo.png"
             alt="Paperfly Logo"
-            className="w-12 h-12 object-contain transform transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
+            className="w-12 h-12 object-contain select-none"
           />
         </div>
         <div>
           <h1 className="text-2xl md:text-3xl font-black font-hand tracking-wide text-[#3F4468]">
             paperfly.site
           </h1>
-          <p className="text-xs font-sans text-slate-500">
+          <p className="text-xs font-hand font-bold tracking-wider text-slate-500">
             {t.tagline}
           </p>
         </div>

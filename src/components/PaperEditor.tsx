@@ -5,7 +5,7 @@
  * 3. Xuất hiện con tem chứa Mã nhận + Con dấu QR 16x16 để chia sẻ cho người nhận
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   FileText,
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { paperSound } from '../utils/sound';
 import { OrigamiPaperPlane } from './OrigamiPaperPlane';
+import { MediaPreview } from './MediaPreview';
 import { translations, type Language } from '../utils/i18n';
 import type { OutgoingPayload } from '../utils/p2p';
 
@@ -52,6 +53,12 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
   const [selectedHighlighter, setSelectedHighlighter] = useState<string | undefined>(undefined);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Tạo URL xem trước cho tệp phương tiện
+  const previewUrl = useMemo(() => {
+    if (!selectedFile) return null;
+    return URL.createObjectURL(selectedFile);
+  }, [selectedFile]);
 
   // Kết quả sau khi bấm Gấp & Phi
   const [stampResult, setStampResult] = useState<{ code: string; shareUrl: string } | null>(null);
@@ -161,7 +168,7 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
           <div className="washi-tape-strip absolute -top-3 left-1/2 -translate-x-1/2 w-32 h-6 rotate-[-1deg] rounded-sm pointer-events-none"></div>
 
           <div className="flex flex-col items-center text-center gap-2 mb-6">
-            <OrigamiPaperPlane size={64} status={isDelivered ? 'idle' : 'flying'} showTrail={!isDelivered} />
+            <OrigamiPaperPlane size={64} status={isDelivered ? 'idle' : 'flying'} />
             <h2 className="text-xl md:text-2xl font-black font-hand text-[#EB5757] tracking-wider uppercase">
               {t.stampReadyTitle}
             </h2>
@@ -436,33 +443,46 @@ export const PaperEditor: React.FC<PaperEditorProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="py-6 px-4 bg-white/90 rounded-xl sketch-border flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#E8F1F8] flex items-center justify-center text-indigo-900 font-bold font-hand text-lg sketch-border-sm">
-                    <Package className="w-6 h-6 text-indigo-900" />
-                  </div>
-                  <div>
-                    <div className="font-hand font-bold text-base md:text-lg text-[#3F4468] break-all max-w-md">
-                      {selectedFile.name}
+              <div className="py-4 px-4 bg-white/90 rounded-xl sketch-border flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#E8F1F8] flex items-center justify-center text-indigo-900 font-bold font-hand text-lg sketch-border-sm">
+                      <Package className="w-5 h-5 text-indigo-900" />
                     </div>
-                    <div className="text-xs text-slate-500 flex items-center gap-2">
-                      <span className="font-bold">{formatFileSize(selectedFile.size)}</span>
-                      <span>•</span>
-                      <span className="uppercase">{selectedFile.type || t.fileTypeFallback}</span>
+                    <div>
+                      <div className="font-hand font-bold text-base md:text-lg text-[#3F4468] break-all max-w-md">
+                        {selectedFile.name}
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <span className="font-bold">{formatFileSize(selectedFile.size)}</span>
+                        <span>•</span>
+                        <span className="uppercase">{selectedFile.type || t.fileTypeFallback}</span>
+                      </div>
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedFile(null);
+                      paperSound.playPaperRustle();
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                    title={t.removeFile}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setSelectedFile(null);
-                    paperSound.playPaperRustle();
-                  }}
-                  className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
-                  title={t.removeFile}
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                {/* Khung xem trước hình ảnh, video hoặc âm thanh */}
+                {previewUrl && (
+                  <MediaPreview
+                    url={previewUrl}
+                    name={selectedFile.name}
+                    type={selectedFile.type}
+                    size={selectedFile.size}
+                    className="pt-2 border-t border-dashed border-[#3F4468]/15"
+                  />
+                )}
               </div>
             )}
           </div>

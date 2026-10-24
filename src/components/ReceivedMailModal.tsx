@@ -9,6 +9,7 @@ import confetti from 'canvas-confetti';
 import { Copy, Download, Check, X, Sparkles, FileText, Package } from 'lucide-react';
 import { paperSound } from '../utils/sound';
 import { OrigamiPaperPlane } from './OrigamiPaperPlane';
+import { MediaPreview } from './MediaPreview';
 import { translations, type Language } from '../utils/i18n';
 import type { ConnectedPeer, FileTransferProgress, PaperNote } from '../types';
 
@@ -143,8 +144,8 @@ export const ReceivedMailModal: React.FC<ReceivedMailModalProps> = ({
             <div className="airmail-border absolute top-0 left-0 right-0 h-2 rounded-t-xl opacity-80"></div>
 
             <div className="flex items-center gap-3 my-2">
-              <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-2xl sketch-border-sm shadow-xs">
-                <Package className="w-7 h-7 text-[#EB5757]" />
+              <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center text-xl sketch-border-sm shadow-xs shrink-0">
+                <Package className="w-6 h-6 text-[#EB5757]" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-hand font-bold text-lg md:text-xl truncate text-[#3F4468]">
@@ -154,6 +155,16 @@ export const ReceivedMailModal: React.FC<ReceivedMailModalProps> = ({
                   {formatFileSize(incomingFile.file.size)}
                 </div>
               </div>
+            </div>
+
+            {/* Khung xem trước hình ảnh, video, hoặc phát âm thanh trực tiếp */}
+            <div className="my-3">
+              <MediaPreview
+                url={incomingFile.file.url}
+                name={incomingFile.file.name}
+                type={incomingFile.file.type}
+                size={incomingFile.file.size}
+              />
             </div>
 
             <div className="mt-4 pt-3 border-t border-dashed border-[#3F4468]/20 flex items-center justify-between">

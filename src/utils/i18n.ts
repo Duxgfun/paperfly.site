@@ -8,7 +8,7 @@ export type Language = 'vi' | 'en';
 export const translations = {
   vi: {
     // Header
-    tagline: 'Chuyền file & lời nhắn như gấp máy bay giấy',
+    tagline: 'Fold. Fly. Share.',
     soundOn: 'Âm thanh: Bật',
     soundOff: 'Âm thanh: Tắt',
     historyBtn: 'Lịch sử',
@@ -79,7 +79,7 @@ export const translations = {
 
   en: {
     // Header
-    tagline: 'Pass files & notes like paper airplanes',
+    tagline: 'Fold. Fly. Share.',
     soundOn: 'Sound: On',
     soundOff: 'Sound: Muted',
     historyBtn: 'History',
