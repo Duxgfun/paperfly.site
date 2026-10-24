@@ -1,7 +1,7 @@
 /**
- * Module quản lý kết nối ngang hàng P2P qua WebRTC (PeerJS) và BroadcastChannel
- * Thiết kế sẵn sàng cho môi trường Production (hỗ trợ cả máy chủ tự host và dịch vụ tĩnh)
- * Hoàn toàn không sử dụng emoji, mã bưu điện kết nối chuẩn xác xuyên mạng
+ * Module quản lý P2P theo quy trình:
+ * 1. Bên Gửi: Viết/chọn file -> Bấm Gửi -> Sinh mã & QR (vd: FLY-382)
+ * 2. Bên Nhận: Nhập mã FLY-382 hoặc quét QR -> Kết nối trực tiếp -> Nhận dữ liệu
  */
 
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
@@ -16,34 +16,35 @@ import type {
 // Danh sách tiền tố mã bưu điện
 const PREFIXES = ['FLY', 'WING', 'NOTE', 'AIR', 'DOVE', 'POST', 'SWIFT', 'KRAFT'];
 
-// Sinh mã 3 chữ số để hạn chế tối đa việc trùng lặp trên mạng công cộng: Vd FLY-382
-export function generatePaperCode(): { code: string } {
+// Sinh mã ngẫu nhiên: Vd FLY-382
+export function generatePaperCode(): string {
   const prefix = PREFIXES[Math.floor(Math.random() * PREFIXES.length)];
   const num = Math.floor(100 + Math.random() * 900);
-  return {
-    code: `${prefix}-${num}`,
-  };
+  return `${prefix}-${num}`;
 }
 
+export type OutgoingPayload =
+  | { kind: 'note'; note: PaperNote }
+  | { kind: 'file'; file: File };
+
 export type P2PEventListener = {
-  onSelfReady: (peerId: string, shortCode: string) => void;
-  onPeerConnected: (peer: ConnectedPeer) => void;
-  onPeerDisconnected: (peerId: string) => void;
   onNoteReceived: (note: PaperNote, sender: ConnectedPeer) => void;
   onFileTransferProgress: (progress: FileTransferProgress) => void;
   onFileReceived: (file: { name: string; size: number; type: string; url: string }, sender: ConnectedPeer) => void;
+  onSendProgress?: (percent: number) => void;
+  onSendSuccess?: (receiverCode: string) => void;
 };
 
 export class P2PManager {
   private peer: Peer | null = null;
-  private localPeerId: string = '';
-  private localCode: string = '';
-  private activeConnections: Map<string, DataConnection> = new Map();
-  private connectedPeers: Map<string, ConnectedPeer> = new Map();
   private broadcastChannel: BroadcastChannel | null = null;
   private listeners: P2PEventListener;
 
-  // Quản lý bộ đệm lắp ráp tệp tin đang nhận
+  // Dữ liệu đang chờ người nhận lấy (ở máy gửi)
+  private pendingPayload: OutgoingPayload | null = null;
+  private pendingCode: string = '';
+
+  // Quản lý bộ đệm lắp ráp tệp tin đang nhận (ở máy nhận)
   private incomingFiles: Map<
     string,
     {
@@ -56,221 +57,318 @@ export class P2PManager {
 
   constructor(listeners: P2PEventListener) {
     this.listeners = listeners;
-    const { code } = generatePaperCode();
-    this.localCode = code;
-
     this.initBroadcastChannel();
-    this.initPeer();
   }
 
   /**
-   * Khởi tạo kênh BroadcastChannel cho phép 2 tab trên cùng trình duyệt
-   * phát hiện và thử nghiệm truyền file tức thì
+   * Kênh BroadcastChannel phục vụ thử nghiệm giữa các tab trên cùng máy
    */
   private initBroadcastChannel() {
     try {
-      this.broadcastChannel = new BroadcastChannel('paperfly-lan-network');
-      this.broadcastChannel.onmessage = (event) => {
+      this.broadcastChannel = new BroadcastChannel('paperfly-share-channel');
+      this.broadcastChannel.onmessage = async (event) => {
         const msg = event.data;
-        if (!msg || msg.senderId === this.localPeerId) return;
+        if (!msg) return;
 
-        if (msg.type === 'DISCOVER_PING') {
-          this.broadcastChannel?.postMessage({
-            type: 'DISCOVER_PONG',
-            senderId: this.localPeerId,
-            code: this.localCode,
+        // Nếu máy nhận yêu cầu lấy dữ liệu theo mã
+        if (msg.type === 'REQUEST_PAYLOAD' && this.pendingPayload && msg.code === this.pendingCode) {
+          await this.dispatchPayloadViaBroadcast(msg.requesterId);
+        } else if (msg.type === 'P2P_MESSAGE') {
+          this.handleIncomingMessage(msg.payload, {
+            peerId: msg.senderId,
+            shortCode: msg.code || 'BẠN BÈ',
+            name: `Máy bay ${msg.code || ''}`,
+            isOnline: true,
           });
-          this.registerPeer(msg.senderId, msg.code);
-        } else if (msg.type === 'DISCOVER_PONG') {
-          this.registerPeer(msg.senderId, msg.code);
-        } else if (msg.type === 'P2P_PAYLOAD' && (!msg.targetId || msg.targetId === this.localPeerId)) {
-          this.handleIncomingMessage(msg.payload, msg.senderId);
         }
       };
     } catch (e) {
-      console.warn('BroadcastChannel không được hỗ trợ trong môi trường này:', e);
+      console.warn('BroadcastChannel error:', e);
     }
   }
 
   /**
-   * Khởi tạo PeerJS WebRTC Connection
-   * Tạo Peer ID trực tiếp theo định dạng: paperfly-{code} (vd: paperfly-fly382)
+   * Cấu hình tạo Peer
    */
-  private initPeer() {
-    const cleanCode = this.localCode.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const peerId = `paperfly-${cleanCode}`;
-    this.localPeerId = peerId;
+  private createPeerInstance(peerId: string): Peer {
+    if (this.peer) {
+      this.peer.destroy();
+    }
 
-    // Cấu hình ICE STUN công cộng của Google
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
     ];
 
-    try {
-      // Nếu tự host máy chủ có /peerjs (chạy qua server.js)
-      const isCustomServer = typeof window !== 'undefined' &&
-        window.location.hostname !== 'localhost' &&
-        !window.location.hostname.includes('vercel.app') &&
-        !window.location.hostname.includes('netlify.app');
+    const isCustomServer = typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      !window.location.hostname.includes('vercel.app') &&
+      !window.location.hostname.includes('netlify.app');
 
-      let peerOptions: PeerOptions = {
-        debug: 0,
-        config: { iceServers },
-      };
-
-      if (isCustomServer) {
-        const isSecure = window.location.protocol === 'https:';
-        peerOptions = {
-          host: window.location.hostname,
-          port: window.location.port ? Number(window.location.port) : (isSecure ? 443 : 80),
-          path: '/peerjs',
-          secure: isSecure,
-          config: { iceServers },
-        };
-      }
-
-      this.peer = new Peer(peerId, peerOptions);
-
-      this.peer.on('open', (id) => {
-        this.localPeerId = id;
-        this.listeners.onSelfReady(id, this.localCode);
-
-        // Phát tín hiệu tìm kiếm các tab nội bộ
-        this.broadcastChannel?.postMessage({
-          type: 'DISCOVER_PING',
-          senderId: this.localPeerId,
-          code: this.localCode,
-        });
-      });
-
-      // Lắng nghe kết nối đến từ máy bay khác
-      this.peer.on('connection', (conn) => {
-        this.setupConnection(conn);
-      });
-
-      this.peer.on('error', (err) => {
-        console.warn('PeerJS event:', err.type);
-        if (err.type === 'unavailable-id') {
-          // Trùng ID trên server công cộng, sinh mã mới
-          const { code } = generatePaperCode();
-          this.localCode = code;
-          this.initPeer();
-        }
-      });
-    } catch (err) {
-      console.warn('Không thể khởi tạo PeerJS:', err);
-    }
-  }
-
-  /**
-   * Thiết lập xử lý DataConnection giữa 2 thiết bị
-   */
-  private setupConnection(conn: DataConnection) {
-    const handleOpen = () => {
-      this.activeConnections.set(conn.peer, conn);
-
-      // Gửi gói tin Handshake để bên kia biết mã máy này
-      const handshake: TransferMessage = {
-        type: 'HANDSHAKE',
-        peerId: this.localPeerId,
-        shortCode: this.localCode,
-        deviceName: `Máy bay ${this.localCode}`,
-      };
-      conn.send(handshake);
+    let peerOptions: PeerOptions = {
+      debug: 0,
+      config: { iceServers },
     };
 
-    if (conn.open) {
-      handleOpen();
-    } else {
-      conn.on('open', handleOpen);
+    if (isCustomServer) {
+      const isSecure = window.location.protocol === 'https:';
+      peerOptions = {
+        host: window.location.hostname,
+        port: window.location.port ? Number(window.location.port) : (isSecure ? 443 : 80),
+        path: '/peerjs',
+        secure: isSecure,
+        config: { iceServers },
+      };
     }
 
-    conn.on('data', (data) => {
-      this.handleIncomingMessage(data as TransferMessage, conn.peer);
+    const peer = new Peer(peerId, peerOptions);
+    this.peer = peer;
+    return peer;
+  }
+
+  /**
+   * BƯỚC 1: BÊN GỬI - Chuẩn bị gửi nội dung và sinh mã / QR
+   */
+  public prepareOutgoingMail(payload: OutgoingPayload): { code: string; shareUrl: string } {
+    const code = generatePaperCode();
+    this.pendingCode = code;
+    this.pendingPayload = payload;
+
+    const cleanCode = code.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const peerId = `paperfly-${cleanCode}`;
+
+    const peer = this.createPeerInstance(peerId);
+
+    // Lắng nghe máy nhận kết nối tới
+    peer.on('connection', (conn) => {
+      this.setupSenderConnection(conn);
     });
 
-    conn.on('close', () => {
-      this.activeConnections.delete(conn.peer);
-      this.connectedPeers.delete(conn.peer);
-      this.listeners.onPeerDisconnected(conn.peer);
+    peer.on('error', (err) => {
+      console.warn('Peer error at sender:', err.type);
+      if (err.type === 'unavailable-id') {
+        // Trùng mã thì tự động sinh lại
+        this.prepareOutgoingMail(payload);
+      }
     });
 
-    conn.on('error', (err) => {
-      console.warn('Lỗi luồng DataConnection:', err);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://paperfly.site';
+    const shareUrl = `${origin}?code=${code}`;
+
+    return { code, shareUrl };
+  }
+
+  /**
+   * Thiết lập truyền dữ liệu từ Máy Gửi sang Máy Nhận khi kết nối thành công
+   */
+  private setupSenderConnection(conn: DataConnection) {
+    conn.on('open', async () => {
+      if (!this.pendingPayload) return;
+
+      // Bên nhận đã kết nối, bắt đầu truyền dữ liệu
+      if (this.pendingPayload.kind === 'note') {
+        conn.send({
+          type: 'NOTE',
+          data: this.pendingPayload.note,
+        });
+        this.listeners.onSendSuccess?.(this.pendingCode);
+      } else if (this.pendingPayload.kind === 'file') {
+        await this.streamFileViaConnection(this.pendingPayload.file, conn);
+        this.listeners.onSendSuccess?.(this.pendingCode);
+      }
     });
   }
 
   /**
-   * Kết nối đến một thiết bị khác bằng Mã số Giấy (Ví dụ: FLY-382)
+   * BƯỚC 2: BÊN NHẬN - Nhập mã hoặc mở URL để nhận nội dung
    */
-  public connectToCode(targetInput: string): Promise<boolean> {
+  public fetchMailByCode(inputCode: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const trimmed = targetInput.trim().toUpperCase();
-      if (!this.peer || !trimmed) {
+      const code = inputCode.trim().toUpperCase();
+      if (!code) {
         resolve(false);
         return;
       }
 
-      const cleanCode = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cleanCode = code.toLowerCase().replace(/[^a-z0-9]/g, '');
       const targetPeerId = `paperfly-${cleanCode}`;
 
-      try {
-        const conn = this.peer.connect(targetPeerId, {
-          reliable: true,
-        });
+      // Thử phát tín hiệu qua BroadcastChannel trước (trong trường hợp mở 2 tab cùng trình duyệt)
+      const myTempId = `client-${Math.random().toString(36).substring(2, 7)}`;
+      this.broadcastChannel?.postMessage({
+        type: 'REQUEST_PAYLOAD',
+        code: code,
+        requesterId: myTempId,
+      });
 
-        // Thiết lập bộ đếm thời gian chờ kết nối (7 giây)
-        const timeout = setTimeout(() => {
+      // Tạo client Peer để kết nối tới bên gửi qua WebRTC
+      const myReceiverId = `paperfly-receiver-${Math.random().toString(36).substring(2, 8)}`;
+      const peer = this.createPeerInstance(myReceiverId);
+
+      peer.on('open', () => {
+        try {
+          const conn = peer.connect(targetPeerId, { reliable: true });
+
+          const timer = setTimeout(() => {
+            resolve(false);
+          }, 8000);
+
+          conn.on('open', () => {
+            clearTimeout(timer);
+            this.setupReceiverConnection(conn, code);
+            resolve(true);
+          });
+
+          conn.on('error', () => {
+            clearTimeout(timer);
+            resolve(false);
+          });
+        } catch {
           resolve(false);
-        }, 7000);
+        }
+      });
 
-        conn.on('open', () => {
-          clearTimeout(timeout);
-          this.setupConnection(conn);
-          this.registerPeer(targetPeerId, trimmed);
-          resolve(true);
-        });
-
-        conn.on('error', () => {
-          clearTimeout(timeout);
-          resolve(false);
-        });
-      } catch {
+      peer.on('error', () => {
         resolve(false);
-      }
+      });
     });
   }
 
-  private registerPeer(peerId: string, shortCode: string) {
-    if (peerId === this.localPeerId) return;
-    const peer: ConnectedPeer = {
-      peerId,
-      shortCode,
-      name: `Máy bay ${shortCode}`,
+  /**
+   * Thiết lập tiếp nhận dữ liệu từ Máy Gửi sang Máy Nhận
+   */
+  private setupReceiverConnection(conn: DataConnection, senderCode: string) {
+    const senderPeer: ConnectedPeer = {
+      peerId: conn.peer,
+      shortCode: senderCode,
+      name: `Máy bay ${senderCode}`,
       isOnline: true,
     };
-    this.connectedPeers.set(peerId, peer);
-    this.listeners.onPeerConnected(peer);
+
+    conn.on('data', (data) => {
+      this.handleIncomingMessage(data as TransferMessage, senderPeer);
+    });
   }
 
   /**
-   * Xử lý gói tin nhận được từ máy bay đối diện
+   * Phát luồng file theo từng mẩu 32KB
    */
-  private handleIncomingMessage(msg: TransferMessage, senderPeerId: string) {
-    const sender = this.connectedPeers.get(senderPeerId) || {
-      peerId: senderPeerId,
-      shortCode: 'TRẠM KHÁC',
-      name: 'Máy bay bạn bè',
-      isOnline: true,
-    };
+  private async streamFileViaConnection(file: File, conn: DataConnection) {
+    const CHUNK_SIZE = 32 * 1024;
+    const fileId = `file-${Date.now()}`;
+    const base64Data = await this.readFileAsBase64(file);
+    const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
 
+    conn.send({
+      type: 'FILE_START',
+      meta: {
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        totalChunks,
+        timestamp: Date.now(),
+      },
+    });
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkStr = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      conn.send({
+        type: 'FILE_CHUNK',
+        id: fileId,
+        chunkIndex: i,
+        chunk: chunkStr,
+      });
+
+      this.listeners.onSendProgress?.(Math.round(((i + 1) / totalChunks) * 100));
+
+      if (i % 8 === 0) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+    }
+
+    conn.send({
+      type: 'FILE_COMPLETE',
+      id: fileId,
+    });
+  }
+
+  /**
+   * Phát dữ liệu nội bộ qua BroadcastChannel khi 2 tab mở cùng máy
+   */
+  private async dispatchPayloadViaBroadcast(requesterId: string) {
+    if (!this.pendingPayload) return;
+
+    if (this.pendingPayload.kind === 'note') {
+      this.broadcastChannel?.postMessage({
+        type: 'P2P_MESSAGE',
+        targetId: requesterId,
+        code: this.pendingCode,
+        payload: {
+          type: 'NOTE',
+          data: this.pendingPayload.note,
+        },
+      });
+      this.listeners.onSendSuccess?.(this.pendingCode);
+    } else if (this.pendingPayload.kind === 'file') {
+      const file = this.pendingPayload.file;
+      const CHUNK_SIZE = 32 * 1024;
+      const fileId = `file-${Date.now()}`;
+      const base64Data = await this.readFileAsBase64(file);
+      const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+
+      this.broadcastChannel?.postMessage({
+        type: 'P2P_MESSAGE',
+        targetId: requesterId,
+        code: this.pendingCode,
+        payload: {
+          type: 'FILE_START',
+          meta: {
+            id: fileId,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            totalChunks,
+            timestamp: Date.now(),
+          },
+        },
+      });
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkStr = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        this.broadcastChannel?.postMessage({
+          type: 'P2P_MESSAGE',
+          targetId: requesterId,
+          code: this.pendingCode,
+          payload: {
+            type: 'FILE_CHUNK',
+            id: fileId,
+            chunkIndex: i,
+            chunk: chunkStr,
+          },
+        });
+      }
+
+      this.broadcastChannel?.postMessage({
+        type: 'P2P_MESSAGE',
+        targetId: requesterId,
+        code: this.pendingCode,
+        payload: {
+          type: 'FILE_COMPLETE',
+          id: fileId,
+        },
+      });
+
+      this.listeners.onSendSuccess?.(this.pendingCode);
+    }
+  }
+
+  /**
+   * Xử lý gói tin nhận được
+   */
+  private handleIncomingMessage(msg: TransferMessage, sender: ConnectedPeer) {
     switch (msg.type) {
-      case 'HANDSHAKE':
-        this.registerPeer(msg.peerId, msg.shortCode);
-        break;
-
       case 'NOTE':
         this.listeners.onNoteReceived(msg.data, sender);
         break;
@@ -320,7 +418,6 @@ export class P2PManager {
         const incoming = this.incomingFiles.get(msg.id);
         if (!incoming) return;
 
-        // Ráp toàn bộ mảng dữ liệu Base64 thành Blob
         const byteCharacters = atob(incoming.chunks.join(''));
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -355,90 +452,6 @@ export class P2PManager {
     }
   }
 
-  /**
-   * Gửi một bức Note giấy vàng sang tất cả thiết bị đang kết nối
-   */
-  public sendNote(text: string, highlighterColor?: string) {
-    const noteMsg: TransferMessage = {
-      type: 'NOTE',
-      data: {
-        text,
-        highlighterColor,
-        timestamp: Date.now(),
-      },
-    };
-
-    this.broadcastMessage(noteMsg);
-  }
-
-  /**
-   * Cắt nhỏ File thành từng chunk 32KB và phát luồng qua đường hầm P2P
-   */
-  public async sendFile(file: File, onProgress?: (percent: number) => void) {
-    const CHUNK_SIZE = 32 * 1024; // 32KB mỗi gói tin
-    const fileId = `file-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-
-    // Đọc file sang Base64
-    const base64Data = await this.readFileAsBase64(file);
-    const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-
-    // Gửi thông báo bắt đầu truyền file
-    const metaMsg: TransferMessage = {
-      type: 'FILE_START',
-      meta: {
-        id: fileId,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        totalChunks,
-        timestamp: Date.now(),
-      },
-    };
-    this.broadcastMessage(metaMsg);
-
-    // Phát lần lượt các mẩu chunk
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkStr = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-      const chunkMsg: TransferMessage = {
-        type: 'FILE_CHUNK',
-        id: fileId,
-        chunkIndex: i,
-        chunk: chunkStr,
-      };
-      this.broadcastMessage(chunkMsg);
-
-      if (onProgress) {
-        onProgress(Math.round(((i + 1) / totalChunks) * 100));
-      }
-
-      if (i % 8 === 0) {
-        await new Promise((r) => setTimeout(r, 5));
-      }
-    }
-
-    // Gửi gói tin báo hoàn tất
-    const completeMsg: TransferMessage = {
-      type: 'FILE_COMPLETE',
-      id: fileId,
-    };
-    this.broadcastMessage(completeMsg);
-  }
-
-  private broadcastMessage(msg: TransferMessage) {
-    for (const conn of this.activeConnections.values()) {
-      if (conn.open) {
-        conn.send(msg);
-      }
-    }
-
-    this.broadcastChannel?.postMessage({
-      type: 'P2P_PAYLOAD',
-      senderId: this.localPeerId,
-      targetId: null,
-      payload: msg,
-    });
-  }
-
   private readFileAsBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -450,17 +463,6 @@ export class P2PManager {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-  }
-
-  public getConnectedPeers(): ConnectedPeer[] {
-    return Array.from(this.connectedPeers.values());
-  }
-
-  public getLocalInfo() {
-    return {
-      peerId: this.localPeerId,
-      shortCode: this.localCode,
-    };
   }
 
   public destroy() {

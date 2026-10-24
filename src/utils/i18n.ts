@@ -1,6 +1,6 @@
 /**
  * Bộ từ điển đa ngôn ngữ (Tiếng Việt & English)
- * Hoàn toàn không dùng emoji ở giao diện người dùng
+ * Quy trình mới: Viết/chọn file -> Bấm Gửi -> Ra Mã & QR -> Người kia nhập mã/quét QR -> Nhận nội dung
  */
 
 export type Language = 'vi' | 'en';
@@ -9,28 +9,15 @@ export const translations = {
   vi: {
     // Header
     tagline: 'Chuyền file & lời nhắn như gấp máy bay giấy',
-    privateBadge: 'Riêng tư & Trực tiếp',
-    yourCodeHeader: 'Mã máy của bạn:',
-    devicesNearby: 'máy quanh đây',
     soundOn: 'Âm thanh: Bật',
     soundOff: 'Âm thanh: Tắt',
     historyBtn: 'Lịch sử',
 
-    // Trạm kết nối (RadarStation)
-    stationTitle: 'MÃ CỦA BẠN ĐỂ NGƯỜI KHÁC KẾT NỐI',
-    copyCode: 'Sao chép mã',
-    copied: 'Đã chép!',
-    scanQRHint: 'Mở camera điện thoại quét mã QR hoặc nhập mã bên cạnh',
-    enterCodePlaceholder: 'Nhập mã máy bên cạnh (ví dụ: FLY-88)...',
-    connectBtn: 'Kết Nối',
-    connecting: 'Đang kết nối...',
-    connectedSuccess: 'Đã kết nối thành công với máy {code}!',
-    connectError: 'Chưa tìm thấy máy {code}. Bạn hãy mở trang này ở máy bên kia nhé!',
-    nearbyTitle: 'Các máy đang mở quanh bạn:',
-    nearbyEmpty: 'Chưa thấy máy nào mở gần đây. Hãy mở trang này trên điện thoại hoặc máy tính khác để gửi thử nhé!',
-    clickToChoose: 'Bấm để kết nối',
+    // Chế độ Gửi vs Nhận
+    tabSend: 'Gấp & Gửi Thư',
+    tabReceive: 'Nhận Thư Bằng Mã',
 
-    // Soạn thảo & Gửi (PaperEditor)
+    // Soạn thảo & Gửi
     tabNote: 'Viết Lời Nhắn (Chữ, Link)',
     tabFile: 'Gửi Tệp (Ảnh, Video, Tài liệu...)',
     highlighterTitle: 'Bút dạ quang đánh dấu:',
@@ -45,20 +32,39 @@ export const translations = {
     removeFile: 'Bỏ chọn',
     foldAndFlyBtn: 'Gấp & Phi Đi',
     foldingMessage: 'Đang gấp cánh máy bay...',
-    flyingMessage: 'Máy bay đang phi sang thiết bị bên cạnh...',
-    tipNoReceiver: 'Mẹo: Máy bay vẫn sẽ phóng đi và tự động giao ngay khi máy bên kia kết nối!',
+    flyingMessage: 'Máy bay đã sẵn sàng cất cánh!',
 
-    // Nhận thư (ReceivedMailModal)
+    // Thẻ Mã & QR sau khi gửi
+    stampReadyTitle: 'MÃ NHẬN THƯ CỦA BẠN',
+    stampSubtitle: 'Đưa mã này hoặc cho máy kia quét QR để nhận nội dung ngay',
+    copyCode: 'Sao chép mã',
+    copyLink: 'Sao chép link',
+    copied: 'Đã sao chép!',
+    scanQRHint: 'Bấm vào để phóng to mã QR',
+    waitingReceiver: 'Đang đợi máy bên kia nhập mã hoặc quét QR...',
+    delivering: 'Đang bay sang máy bên kia...',
+    sentSuccess: 'Đã giao thư thành công!',
+    sendAnotherBtn: 'Gửi bức thư khác',
+
+    // Khu vực Nhận thư
+    receiveTitle: 'NHẬN THƯ MÁY BAY GIẤY',
+    receiveSubtitle: 'Nhập mã gồm chữ và số được người gửi chia sẻ',
+    enterCodePlaceholder: 'Nhập mã nhận thư (ví dụ: FLY-382)...',
+    openMailBtn: 'Mở Thư Ngay',
+    receivingStatus: 'Đang tìm máy bay và tải nội dung...',
+    codeNotFound: 'Chưa tìm thấy bức thư với mã {code}. Hãy chắc chắn máy gửi vẫn đang mở trang web nhé!',
+
+    // Nhận thư thành công (Modal)
     planeLanded: 'Máy bay giấy vừa hạ cánh!',
-    fromStation: 'Từ bạn: {name}',
-    noteContentTitle: 'Nội dung lời nhắn truyền tay:',
+    fromStation: 'Nội dung nhận được:',
+    noteContentTitle: 'Lời nhắn gửi đến:',
     copyTextBtn: 'Sao chép chữ',
     fileReceivedTitle: 'Tệp tin gửi đến:',
     downloadFileBtn: 'Tải Về Máy',
     receivingFile: 'Đang đón tệp: {name}',
     cleanNotice: 'Dữ liệu truyền thẳng giữa 2 máy, không lưu lại trên máy chủ.',
 
-    // Lịch sử (FlightJournal)
+    // Lịch sử
     journalTitle: 'Nhật Ký Gửi & Nhận',
     journalEmpty: 'Chưa có chuyến bay nào. Hãy thử viết một mẩu giấy note hoặc chọn một tấm ảnh rồi bấm Gấp & Phi!',
     sentLabel: 'Đã gửi đi',
@@ -74,28 +80,15 @@ export const translations = {
   en: {
     // Header
     tagline: 'Pass files & notes like paper airplanes',
-    privateBadge: 'Direct & Private',
-    yourCodeHeader: 'Your code:',
-    devicesNearby: 'devices nearby',
     soundOn: 'Sound: On',
     soundOff: 'Sound: Muted',
     historyBtn: 'History',
 
-    // Trạm kết nối (RadarStation)
-    stationTitle: 'SHARE THIS CODE TO CONNECT',
-    copyCode: 'Copy code',
-    copied: 'Copied!',
-    scanQRHint: 'Scan QR with phone camera or enter the code',
-    enterCodePlaceholder: 'Enter nearby device code (e.g. FLY-88)...',
-    connectBtn: 'Connect',
-    connecting: 'Connecting...',
-    connectedSuccess: 'Connected to device {code}!',
-    connectError: 'Could not find device {code}. Make sure it is open on the other device!',
-    nearbyTitle: 'Devices open near you:',
-    nearbyEmpty: 'No nearby devices found yet. Open paperfly.site on your phone or another laptop to test!',
-    clickToChoose: 'Click to connect',
+    // Chế độ Gửi vs Nhận
+    tabSend: 'Fold & Send',
+    tabReceive: 'Receive with Code',
 
-    // Soạn thảo & Gửi (PaperEditor)
+    // Soạn thảo & Gửi
     tabNote: 'Quick Note (Text, Links)',
     tabFile: 'Send Files (Photos, Docs, Videos...)',
     highlighterTitle: 'Highlighter pen:',
@@ -110,12 +103,31 @@ export const translations = {
     removeFile: 'Remove',
     foldAndFlyBtn: 'Fold & Fly',
     foldingMessage: 'Folding paper plane...',
-    flyingMessage: 'Flying straight to your nearby device...',
-    tipNoReceiver: 'Tip: The plane will take off and deliver instantly once connected!',
+    flyingMessage: 'Plane is ready for take-off!',
 
-    // Nhận thư (ReceivedMailModal)
+    // Thẻ Mã & QR sau khi gửi
+    stampReadyTitle: 'YOUR PICKUP CODE',
+    stampSubtitle: 'Share this code or let the other device scan the QR code to receive',
+    copyCode: 'Copy code',
+    copyLink: 'Copy link',
+    copied: 'Copied!',
+    scanQRHint: 'Click to enlarge QR code',
+    waitingReceiver: 'Waiting for the other device to enter code or scan QR...',
+    delivering: 'Flying over to the other device...',
+    sentSuccess: 'Delivered successfully!',
+    sendAnotherBtn: 'Send another note',
+
+    // Khu vực Nhận thư
+    receiveTitle: 'CATCH A PAPER PLANE',
+    receiveSubtitle: 'Enter the code shared by the sender',
+    enterCodePlaceholder: 'Enter code (e.g. FLY-382)...',
+    openMailBtn: 'Open Letter',
+    receivingStatus: 'Locating paper plane and loading content...',
+    codeNotFound: 'No letter found with code {code}. Make sure the sender still has the tab open!',
+
+    // Nhận thư thành công (Modal)
     planeLanded: 'A paper plane just landed!',
-    fromStation: 'From: {name}',
+    fromStation: 'Received content:',
     noteContentTitle: 'Passed paper note:',
     copyTextBtn: 'Copy Text',
     fileReceivedTitle: 'Incoming parcel:',
@@ -123,7 +135,7 @@ export const translations = {
     receivingFile: 'Catching file: {name}',
     cleanNotice: 'Directly transferred between devices, zero server trace.',
 
-    // Lịch sử (FlightJournal)
+    // Lịch sử
     journalTitle: 'Flight History',
     journalEmpty: 'No flights yet. Write a friendly note or drop a photo, then tap Fold & Fly!',
     sentLabel: 'Sent',
