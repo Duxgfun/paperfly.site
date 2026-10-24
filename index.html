@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>paperfly.site - Truyền Tệp & Giấy Note P2P Trực Tiếp</title>
+    <meta name="description" content="Công cụ truyền file & văn bản P2P trực tiếp trên trình duyệt theo phong cách máy bay giấy gấp thủ công." />
+    <!-- Tải phông chữ viết tay & phông bo tròn tự nhiên -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nunito:ital,wght@0,400..900;1,400..900&family=Patrick+Hand&display=swap" rel="stylesheet">
+  </head>
+  <body class="selection:bg-amber-200 selection:text-indigo-900">
+    <!-- Bộ lọc SVG tạo viền gợn sóng vẽ tay (Hand-drawn border effect) -->
+    <svg class="absolute w-0 h-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <defs>
+        <filter id="hand-drawn-filter" x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="rough-edge" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="4" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* 
+ * Thiết lập các biến CSS cho hệ thống Design System Giấy & Nét Vẽ Tay 
+ * Tông màu lấy chính xác theo Logo và Spec của paperfly.site
+ */
+:root {
+  /* Tông nét vẽ mực than chì & chữ */
+  --pf-indigo: #3F4468;
+  --pf-indigo-light: #59608F;
+  --pf-indigo-ghost: rgba(63, 68, 104, 0.08);
+
+  /* Giấy viết thư / Cánh máy bay (lấy từ mảng xanh Logo) */
+  --pf-ice-blue: #E8F1F8;
+  --pf-ice-blue-border: #C8DCED;
+
+  /* Giấy Note vàng truyền thống */
+  --pf-sticky-yellow: #FFF3B2;
+  --pf-sticky-yellow-border: #E8DC84;
+
+  /* Giấy Kraft cổ điển / Bưu kiện */
+  --pf-kraft: #F5EBE0;
+  --pf-kraft-border: #DDC8B4;
+
+  /* Nền bàn giấy ô ly */
+  --pf-bg-grid: #FAFAFA;
+  --pf-grid-line: #E2E8F0;
+
+  /* Con dấu bưu điện & Bút dạ quang */
+  --pf-stamp-red: #EB5757;
+  --pf-highlighter: #A7F3D0;
+}
+
+@theme {
+  --color-indigo-pencil: #3F4468;
+  --color-indigo-light: #59608F;
+  --color-ice-blue: #E8F1F8;
+  --color-ice-border: #C8DCED;
+  --color-sticky-yellow: #FFF3B2;
+  --color-sticky-border: #E8DC84;
+  --color-kraft: #F5EBE0;
+  --color-kraft-border: #DDC8B4;
+  --color-stamp-red: #EB5757;
+  --color-highlighter: #A7F3D0;
+
+  --font-hand: 'Patrick Hand', 'Gaegu', cursive, sans-serif;
+  --font-doodle: 'Gaegu', cursive, sans-serif;
+  --font-sans: 'Nunito', system-ui, -apple-system, sans-serif;
+}
+
+/* Nền giấy ô ly học sinh */
+.bg-grid-paper {
+  background-color: #F8F9FA;
+  background-image: 
+    linear-gradient(to right, rgba(63, 68, 104, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(63, 68, 104, 0.08) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+/* Hiệu ứng bóng đổ đè của giấy thật (Paper drop shadow) */
+.paper-shadow {
+  box-shadow: 2px 6px 16px -2px rgba(63, 68, 104, 0.12), 0 2px 4px -1px rgba(63, 68, 104, 0.06);
+}
+
+.paper-shadow-lg {
+  box-shadow: 4px 12px 28px -4px rgba(63, 68, 104, 0.16), 0 4px 8px -2px rgba(63, 68, 104, 0.08);
+}
+
+/* Băng dính Washi Tape bán trong suốt */
+.washi-tape-strip {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border-left: 2px dashed rgba(63, 68, 104, 0.15);
+  border-right: 2px dashed rgba(63, 68, 104, 0.15);
+}
+
+/* Viền nét vẽ bút dạ / bút chì */
+.sketch-border {
+  border-width: 2px;
+  border-style: solid;
+  border-color: #3F4468;
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+}
+
+.sketch-border-sm {
+  border-width: 1.5px;
+  border-style: solid;
+  border-color: #3F4468;
+  border-radius: 12px 4px 14px 5px / 4px 13px 5px 12px;
+}
+
+/* Nét đứt tem thư bưu điện (Air Mail Dashed Border) */
+.airmail-border {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #EB5757 0,
+    #EB5757 12px,
+    transparent 12px,
+    transparent 18px,
+    #3F4468 18px,
+    #3F4468 30px,
+    transparent 30px,
+    transparent 36px
+  );
+}
+
+/* Hiệu ứng 3D perspective cho máy bay giấy */
+.perspective-origami {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+/* Tùy chỉnh thanh cuộn kiểu bút chì tối giản */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(63, 68, 104, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 68, 104, 0.4);
+}
